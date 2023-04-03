@@ -1,2 +1,2 @@
 # redevelop_FreeRTOS
-在FreeRTOS上添加系统一些功能：如CFS、Memory SWAP 等等
+基于 FreeRTOS 添加一些功能：如CFS、Memory SWAP 等等
