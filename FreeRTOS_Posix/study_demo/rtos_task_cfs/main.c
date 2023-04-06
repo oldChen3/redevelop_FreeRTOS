@@ -43,36 +43,39 @@ static TaskHandle_t xTask_2;
 static void task_high_0(void *p)
 {
     os_printf("%s ready \n", __FUNCTION__);
-    int cnt = 0;
+    static int h0_cnt = 0;
     while(1){
-        if(cnt++>10*100*1000){
-	    os_printf("%s run", __FUNCTION__);
-	    cnt = 0;
-	}
+        if(h0_cnt++>10*100*1000)
+        {
+	        //os_printf("%s run", __FUNCTION__);
+	        h0_cnt = 0;
+	    }
     }
 }
 
 static void task_high_1(void *p)
 {
     os_printf("%s ready", __FUNCTION__);
-    int cnt = 0;
+    static int h1_cnt = 0;
     while(1){
-        if(cnt++>10*100*1000){
-	    os_printf("%s run", __FUNCTION__);
-	    cnt = 0;
-	}
+        if(h1_cnt++>10*100*1000)
+        {
+	        //os_printf("%s run", __FUNCTION__);
+	        h1_cnt = 0;
+	    }
     }
 }
 
 static void task_low_0(void *p)
 {
     os_printf("%s ready", __FUNCTION__);
-    int cnt = 0;
+    static int low_cnt = 0;
     while(1){
-        if(cnt++>100*1000){
-	    os_printf("%s run", __FUNCTION__);
-	    cnt = 0;
-	}
+        if(low_cnt++>10*100*1000)
+        {
+	        //os_printf("%s run", __FUNCTION__);
+	        low_cnt = 0;
+	    }
     }
 }
 /**
@@ -93,7 +96,7 @@ int main(void)
                             (const char *   )"task_high_0",
                             (unsigned short )128,
                             (void *         )NULL,
-                            (UBaseType_t    )2,
+                            (UBaseType_t    )9,
                             (TaskHandle_t * )&xTask_0);
 
     if (pdPASS != xReturn){
@@ -104,7 +107,7 @@ int main(void)
                             (const char *   )"task_high_1",
                             (unsigned short )128,
                             (void *         )NULL,
-                            (UBaseType_t    )2,
+                            (UBaseType_t    )5,
                             (TaskHandle_t * )&xTask_1);
 
     if (pdPASS != xReturn){

@@ -129,7 +129,24 @@ configIDLE_TASK_NAME in FreeRTOSConfig.h. */
 	} /* taskRECORD_READY_PRIORITY */
 
 	/*-----------------------------------------------------------*/
-
+#if(configUSE_CFS) /*find out the min vruntime TCB,then set it to pxCurrentTCB*/
+	#define taskSELECT_HIGHEST_PRIORITY_TASK()												\
+	{																						\
+	if( ! listLIST_IS_EMPTY( &xCFSReadyList ))												\
+	{																						\
+		TCB_t *tmp = pxCurrentTCB;															\
+		TCB_t *minTimeTCB = pxCurrentTCB;													\
+		for(;;){																			\
+			listGET_OWNER_OF_NEXT_ENTRY( tmp, &(xCFSReadyList));							\
+			if(tmp==pxCurrentTCB)															\
+				break;																		\
+			if(tmp->ulvruntime < minTimeTCB->ulvruntime)									\
+				minTimeTCB = tmp;															\
+		}																					\
+		pxCurrentTCB = minTimeTCB;															\
+	}																						\
+	}
+#else
 	#define taskSELECT_HIGHEST_PRIORITY_TASK()															\
 	{																									\
 	UBaseType_t uxTopPriority = uxTopReadyPriority;														\
@@ -146,7 +163,7 @@ configIDLE_TASK_NAME in FreeRTOSConfig.h. */
 		listGET_OWNER_OF_NEXT_ENTRY( pxCurrentTCB, &( pxReadyTasksLists[ uxTopPriority ] ) );			\
 		uxTopReadyPriority = uxTopPriority;																\
 	} /* taskSELECT_HIGHEST_PRIORITY_TASK */
-
+#endif
 	/*-----------------------------------------------------------*/
 
 	/* Define away taskRESET_READY_PRIORITY() and portRESET_READY_PRIORITY() as
@@ -218,7 +235,7 @@ count overflows. */
 #define prvAddTaskToReadyList( pxTCB )																\
 	traceMOVED_TASK_TO_READY_STATE( pxTCB );														\
 	taskRECORD_READY_PRIORITY( ( pxTCB )->uxPriority );												\
-	vListInsertEnd( &( pxReadyTasksLists[ ( pxTCB )->uxPriority ] ), &( ( pxTCB )->xStateListItem ) ); \
+	vListInsertEnd( &( pxReadyTasksLists[ ( pxTCB )->uxPriority ] ), &( ( pxTCB )->xStateListItem ) );\
 	tracePOST_MOVED_TASK_TO_READY_STATE( pxTCB )
 /*-----------------------------------------------------------*/
 
@@ -292,6 +309,10 @@ typedef struct tskTaskControlBlock 			/* The old naming convention is used to pr
 	#if( configGENERATE_RUN_TIME_STATS == 1 )
 		uint32_t		ulRunTimeCounter;	/*< Stores the amount of time the task has spent in the Running state. */
 	#endif
+	#if( configUSE_CFS == 1 )
+		uint32_t		ulRunTimeTick;	/*count the running tick */
+		uint32_t		ulvruntime;		/*count the virtual running time*/
+	#endif
 
 	#if ( configUSE_NEWLIB_REENTRANT == 1 )
 		/* Allocate a Newlib reent structure that is specific to this task.
@@ -343,6 +364,9 @@ PRIVILEGED_DATA static List_t xDelayedTaskList2;						/*< Delayed tasks (two lis
 PRIVILEGED_DATA static List_t * volatile pxDelayedTaskList;				/*< Points to the delayed task list currently being used. */
 PRIVILEGED_DATA static List_t * volatile pxOverflowDelayedTaskList;		/*< Points to the delayed task list currently being used to hold tasks that have overflowed the current tick count. */
 PRIVILEGED_DATA static List_t xPendingReadyList;						/*< Tasks that have been readied while the scheduler was suspended.  They will be moved to the ready list when the scheduler is resumed. */
+#if(configUSE_CFS)
+PRIVILEGED_DATA static List_t xCFSReadyList;							/*< CFS tasks>*/
+#endif
 
 #if( INCLUDE_vTaskDelete == 1 )
 
@@ -805,6 +829,9 @@ static void prvAddNewTaskToReadyList( TCB_t *pxNewTCB ) PRIVILEGED_FUNCTION;
 
 			prvInitialiseNewTask( pxTaskCode, pcName, ( uint32_t ) usStackDepth, pvParameters, uxPriority, pxCreatedTask, pxNewTCB, NULL );
 			prvAddNewTaskToReadyList( pxNewTCB );
+		#if(configUSE_CFS)
+			vListInsert( &( xCFSReadyList ), &( pxNewTCB->xEventListItem ) );  /*inser the task to CFS_list*/
+		#endif
 			xReturn = pdPASS;
 		}
 		else
@@ -962,6 +989,10 @@ UBaseType_t x;
 	{
 		pxNewTCB->ulRunTimeCounter = 0UL;
 	}
+	#if( configUSE_CFS == 1 )
+		pxNewTCB->ulRunTimeTick = 0UL;
+		pxNewTCB->ulvruntime = 0UL;
+	#endif
 	#endif /* configGENERATE_RUN_TIME_STATS */
 
 	#if ( portUSING_MPU_WRAPPERS == 1 )
@@ -2009,6 +2040,7 @@ BaseType_t xReturn;
 
 	#if ( configUSE_TIMERS == 1 )
 	{
+#if(! configUSE_CFS)	/*to avoid Suspend ALL task*/
 		if( xReturn == pdPASS )
 		{
 			xReturn = xTimerCreateTimerTask();
@@ -2017,6 +2049,7 @@ BaseType_t xReturn;
 		{
 			mtCOVERAGE_TEST_MARKER();
 		}
+#endif
 	}
 	#endif /* configUSE_TIMERS */
 
@@ -2772,7 +2805,6 @@ BaseType_t xSwitchRequired = pdFALSE;
 				}
 			}
 		}
-
 		/* Tasks of equal priority to the currently running task will share
 		processing time (time slice) if preemption is on, and the application
 		writer has not explicitly turned time slicing off. */
@@ -2788,7 +2820,6 @@ BaseType_t xSwitchRequired = pdFALSE;
 			}
 		}
 		#endif /* ( ( configUSE_PREEMPTION == 1 ) && ( configUSE_TIME_SLICING == 1 ) ) */
-
 		#if ( configUSE_TICK_HOOK == 1 )
 		{
 			/* Guard against the tick hook being called when the pended tick
@@ -2982,6 +3013,13 @@ void vTaskSwitchContext( void )
 			}
 			ulTaskSwitchedInTime = ulTotalRunTime;
 		}
+		#if( configUSE_CFS == 1 )	/*count the time*/
+			//if( ulTotalRunTime > ulTaskSwitchedInTime )
+			{
+				pxCurrentTCB->ulRunTimeTick++;
+				pxCurrentTCB->ulvruntime = pxCurrentTCB->ulRunTimeTick*(1 * (10-pxCurrentTCB->uxPriority));
+			}
+		#endif
 		#endif /* configGENERATE_RUN_TIME_STATS */
 
 		/* Check for stack overflow, if configured. */
@@ -2998,7 +3036,7 @@ void vTaskSwitchContext( void )
 		optimised asm code. */
 		taskSELECT_HIGHEST_PRIORITY_TASK(); /*lint !e9079 void * is used as this macro is used with timers and co-routines too.  Alignment is known to be fine as the type of the pointer stored and retrieved is the same. */
 		traceTASK_SWITCHED_IN();
-
+		
 		/* After the new task is switched in, update the global errno. */
 		#if( configUSE_POSIX_ERRNO == 1 )
 		{
@@ -3555,7 +3593,9 @@ UBaseType_t uxPriority;
 	vListInitialise( &xDelayedTaskList1 );
 	vListInitialise( &xDelayedTaskList2 );
 	vListInitialise( &xPendingReadyList );
-
+#if(configUSE_CFS)
+	vListInitialise( &xCFSReadyList);	/*initialize the CFS_LIST*/
+#endif
 	#if ( INCLUDE_vTaskDelete == 1 )
 	{
 		vListInitialise( &xTasksWaitingTermination );
