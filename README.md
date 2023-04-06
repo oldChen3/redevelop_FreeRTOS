@@ -2,7 +2,7 @@
 项目内容：基于 FreeRTOS 添加一些功能：如CFS、Memory SWAP 等等  
 # 变更履历：
 ## 上传 FreeRTOS_on_Linux 的基础代码  
-## 时间：2023/04/06   
+## 时间：2023/04/06: 添加 CFS 调度策略
 内容：    
       1.在FreeRTOS中实现类似于 Linux 的 CFS 调度策略（使用虚拟时间作为依据选择下一个要调度的task，虚拟时间=实际时间×优先级因子）  
       2.控制宏开关为 configUSE_CFS (FreeRTOSConfig.h)   
