@@ -31,8 +31,8 @@
  task(task_low_0) running run_cnt:261 - vruntime:2349   
  task(task_high_0) running run_cnt:2341 - vruntime:2341   
  task(task_high_0) running run_cnt:2342 - vruntime:2342   
- task(task_high_0) running run_cnt:2343 - vruntime:2343 
- 理论上，task0具有更高的优先级，应该得到更多的CPU资源，task1 和 task2 优先级递减，得到的资源更少。  
+ task(task_high_0) running run_cnt:2343 - vruntime:2343   
+ 理论上，task0具有更高的优先级，应该得到更多的CPU资源，task1 和 task2 优先级递减，得到的资源更少。   
  从实验结果上看，task0 执行了2340次，对应的vruntime为2340；task1执行260次，vruntime达到2340，而最低优先级的task2虽然优先级低，  
  但是在 task0 执行了 2340次中，也能得到260次的执行。=> 实验结果符合预期。  
 
