@@ -19,7 +19,7 @@
 #include "config.h"
 
 /* Private define ------------------------------------------------------------*/
-
+#define ENABLE_DEBUG_INFO   1
 /* Private typedef -----------------------------------------------------------*/
 
 /* Private macro -------------------------------------------------------------*/
@@ -43,12 +43,18 @@ static TaskHandle_t xTask_2;
 static void task_high_0(void *p)
 {
     os_printf("%s ready \n", __FUNCTION__);
-    static int h0_cnt = 0;
+    static int h0_cnt = 0,h0_cnt2 = 0;
     while(1){
         if(h0_cnt++>10*100*1000)
         {
-	        //os_printf("%s run", __FUNCTION__);
+#if(ENABLE_DEBUG_INFO)
+	        os_printf("%s run", __FUNCTION__);
+#endif
 	        h0_cnt = 0;
+            //if(h0_cnt2++>3000){
+            //    os_printf("delete task", __FUNCTION__);
+            //    vTaskDelete(xTask_0);
+            //}
 	    }
     }
 }
@@ -60,7 +66,9 @@ static void task_high_1(void *p)
     while(1){
         if(h1_cnt++>10*100*1000)
         {
-	        //os_printf("%s run", __FUNCTION__);
+#if(ENABLE_DEBUG_INFO)
+	        os_printf("%s run", __FUNCTION__);
+#endif
 	        h1_cnt = 0;
 	    }
     }
@@ -73,7 +81,9 @@ static void task_low_0(void *p)
     while(1){
         if(low_cnt++>10*100*1000)
         {
-	        //os_printf("%s run", __FUNCTION__);
+#if(ENABLE_DEBUG_INFO)
+	        os_printf("%s run", __FUNCTION__);
+#endif
 	        low_cnt = 0;
 	    }
     }
@@ -96,7 +106,7 @@ int main(void)
                             (const char *   )"task_high_0",
                             (unsigned short )128,
                             (void *         )NULL,
-                            (UBaseType_t    )9,
+                            (UBaseType_t    )5,
                             (TaskHandle_t * )&xTask_0);
 
     if (pdPASS != xReturn){
@@ -118,7 +128,7 @@ int main(void)
                             (const char *   )"task_low_0",
                             (unsigned short )128,
                             (void *         )NULL,
-                            (UBaseType_t    )1,
+                            (UBaseType_t    )0,
                             (TaskHandle_t * )&xTask_2);
 
     if (pdPASS != xReturn){

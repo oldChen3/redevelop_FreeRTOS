@@ -69,6 +69,9 @@ functions but without including stdio.h here. */
 #define taskWAITING_NOTIFICATION		( ( uint8_t ) 1 )
 #define taskNOTIFICATION_RECEIVED		( ( uint8_t ) 2 )
 
+#if(configUSE_CFS)
+	#define CFS_MAX_PROIRITY	6	/*<CFS task priority range is [0,6]>*/
+#endif
 /*
  * The value used to fill the stack of a task when the task is created.  This
  * is used purely for checking the high water mark for tasks.
@@ -132,19 +135,33 @@ configIDLE_TASK_NAME in FreeRTOSConfig.h. */
 #if(configUSE_CFS) /*find out the min vruntime TCB,then set it to pxCurrentTCB*/
 	#define taskSELECT_HIGHEST_PRIORITY_TASK()												\
 	{																						\
-	if( ! listLIST_IS_EMPTY( &xCFSReadyList ))												\
-	{																						\
-		TCB_t *tmp = pxCurrentTCB;															\
-		TCB_t *minTimeTCB = pxCurrentTCB;													\
-		for(;;){																			\
-			listGET_OWNER_OF_NEXT_ENTRY( tmp, &(xCFSReadyList));							\
-			if(tmp==pxCurrentTCB)															\
-				break;																		\
-			if(tmp->ulvruntime < minTimeTCB->ulvruntime)									\
-				minTimeTCB = tmp;															\
-		}																					\
-		pxCurrentTCB = minTimeTCB;															\
-	}																						\
+	UBaseType_t uxTopPriority = 9;																		\
+																										\
+		/* Find the highest priority queue that contains ready tasks. */								\
+		while( listLIST_IS_EMPTY( &( pxReadyTasksLists[ uxTopPriority ] ) ) )							\
+		{																								\
+			if(--uxTopPriority <= CFS_MAX_PROIRITY)														\
+				break;																					\
+		}																								\
+		if(uxTopPriority > CFS_MAX_PROIRITY){															\
+			listGET_OWNER_OF_NEXT_ENTRY( pxCurrentTCB, &( pxReadyTasksLists[ uxTopPriority ] ) );		\
+		}																								\
+		else																							\
+		{																							\
+			if( ! listLIST_IS_EMPTY( &xCFSReadyList ))												\
+			{																						\
+				TCB_t *tmp = pxCurrentTCB;															\
+				TCB_t *minTimeTCB = pxCurrentTCB;													\
+				for(;;){																			\
+					listGET_OWNER_OF_NEXT_ENTRY( tmp, &(xCFSReadyList));							\
+					if(tmp==pxCurrentTCB)															\
+						break;																		\
+					if(tmp->ulvruntime < minTimeTCB->ulvruntime)									\
+						minTimeTCB = tmp;															\
+				}																					\
+				pxCurrentTCB = minTimeTCB;															\
+			}																						\
+		}																							\
 	}
 #else
 	#define taskSELECT_HIGHEST_PRIORITY_TASK()															\
@@ -158,8 +175,6 @@ configIDLE_TASK_NAME in FreeRTOSConfig.h. */
 			--uxTopPriority;																			\
 		}																								\
 																										\
-		/* listGET_OWNER_OF_NEXT_ENTRY indexes through the list, so the tasks of						\
-		the	same priority get an equal share of the processor time. */									\
 		listGET_OWNER_OF_NEXT_ENTRY( pxCurrentTCB, &( pxReadyTasksLists[ uxTopPriority ] ) );			\
 		uxTopReadyPriority = uxTopPriority;																\
 	} /* taskSELECT_HIGHEST_PRIORITY_TASK */
@@ -232,11 +247,30 @@ count overflows. */
  * Place the task represented by pxTCB into the appropriate ready list for
  * the task.  It is inserted at the end of the list.
  */
-#define prvAddTaskToReadyList( pxTCB )																\
-	traceMOVED_TASK_TO_READY_STATE( pxTCB );														\
-	taskRECORD_READY_PRIORITY( ( pxTCB )->uxPriority );												\
-	vListInsertEnd( &( pxReadyTasksLists[ ( pxTCB )->uxPriority ] ), &( ( pxTCB )->xStateListItem ) );\
-	tracePOST_MOVED_TASK_TO_READY_STATE( pxTCB )
+#if(configUSE_CFS)
+#define prvAddTaskToReadyList( pxTCB )																    \
+	{																									\
+		traceMOVED_TASK_TO_READY_STATE( pxTCB );														\
+		taskRECORD_READY_PRIORITY( ( pxTCB )->uxPriority );												\
+		if((pxTCB)->uxPriority <= CFS_MAX_PROIRITY)														\
+		{											 												    \
+			vListInsert( &xCFSReadyList, &( ( pxTCB )->xStateListItem ) );								\
+		}																								\
+		else																							\
+		{																								\
+			vListInsertEnd( &( pxReadyTasksLists[ ( pxTCB )->uxPriority ] ), &( ( pxTCB )->xStateListItem ) );\
+		}																									  \
+		tracePOST_MOVED_TASK_TO_READY_STATE( pxTCB )														  \
+	}
+#else
+#define prvAddTaskToReadyList( pxTCB )																	\
+{																										\
+	traceMOVED_TASK_TO_READY_STATE( pxTCB );															\
+	taskRECORD_READY_PRIORITY( ( pxTCB )->uxPriority );													\
+	vListInsertEnd( &( pxReadyTasksLists[ ( pxTCB )->uxPriority ] ), &( ( pxTCB )->xStateListItem ) );	\
+	tracePOST_MOVED_TASK_TO_READY_STATE( pxTCB )														\
+}
+#endif
 /*-----------------------------------------------------------*/
 
 /*
@@ -829,9 +863,6 @@ static void prvAddNewTaskToReadyList( TCB_t *pxNewTCB ) PRIVILEGED_FUNCTION;
 
 			prvInitialiseNewTask( pxTaskCode, pcName, ( uint32_t ) usStackDepth, pvParameters, uxPriority, pxCreatedTask, pxNewTCB, NULL );
 			prvAddNewTaskToReadyList( pxNewTCB );
-		#if(configUSE_CFS)
-			vListInsert( &( xCFSReadyList ), &( pxNewTCB->xEventListItem ) );  /*inser the task to CFS_list*/
-		#endif
 			xReturn = pdPASS;
 		}
 		else
@@ -2810,7 +2841,15 @@ BaseType_t xSwitchRequired = pdFALSE;
 		writer has not explicitly turned time slicing off. */
 		#if ( ( configUSE_PREEMPTION == 1 ) && ( configUSE_TIME_SLICING == 1 ) )
 		{
-			if( listCURRENT_LIST_LENGTH( &( pxReadyTasksLists[ pxCurrentTCB->uxPriority ] ) ) > ( UBaseType_t ) 1 )
+			List_t * plist = &( pxReadyTasksLists[ pxCurrentTCB->uxPriority ] );
+		#if(configUSE_CFS)
+			if(pxCurrentTCB->uxPriority <= CFS_MAX_PROIRITY)
+			{
+				plist = &xCFSReadyList;
+			}
+		#endif
+			
+			if( listCURRENT_LIST_LENGTH( plist ) > ( UBaseType_t ) 1 )
 			{
 				xSwitchRequired = pdTRUE;
 			}
@@ -3017,7 +3056,7 @@ void vTaskSwitchContext( void )
 			//if( ulTotalRunTime > ulTaskSwitchedInTime )
 			{
 				pxCurrentTCB->ulRunTimeTick++;
-				pxCurrentTCB->ulvruntime = pxCurrentTCB->ulRunTimeTick*(1 * (10-pxCurrentTCB->uxPriority));
+				pxCurrentTCB->ulvruntime = pxCurrentTCB->ulRunTimeTick*(10 * (10-pxCurrentTCB->uxPriority));
 			}
 		#endif
 		#endif /* configGENERATE_RUN_TIME_STATS */
@@ -3036,7 +3075,7 @@ void vTaskSwitchContext( void )
 		optimised asm code. */
 		taskSELECT_HIGHEST_PRIORITY_TASK(); /*lint !e9079 void * is used as this macro is used with timers and co-routines too.  Alignment is known to be fine as the type of the pointer stored and retrieved is the same. */
 		traceTASK_SWITCHED_IN();
-		
+		//printf("task:%s , runCnt:%d, vruntime:%d \n",pxCurrentTCB->pcTaskName, pxCurrentTCB->ulRunTimeTick, pxCurrentTCB->ulvruntime);/*<debug task >*/
 		/* After the new task is switched in, update the global errno. */
 		#if( configUSE_POSIX_ERRNO == 1 )
 		{
@@ -3381,7 +3420,14 @@ static portTASK_FUNCTION( prvIdleTask, pvParameters )
 	the idle task is responsible for deleting the task's secure context, if
 	any. */
 	portALLOCATE_SECURE_CONTEXT( configMINIMAL_SECURE_STACK_SIZE );
-
+	List_t * plist = &( pxReadyTasksLists[tskIDLE_PRIORITY ] );
+#if(configUSE_CFS)
+	{
+		/*idle task should alwayse in CFS_LIST(except use the idle schedule class like linux)			
+		so we just need to check if there is someone in the CFS_LIST(if true to yield)*/
+		plist = &xCFSReadyList;
+	}
+#endif
 	for( ;; )
 	{
 		/* See if any tasks have deleted themselves - if so then the idle task
@@ -3409,7 +3455,7 @@ static portTASK_FUNCTION( prvIdleTask, pvParameters )
 			the list, and an occasional incorrect value will not matter.  If
 			the ready list at the idle priority contains more than one task
 			then a task other than the idle task is ready to execute. */
-			if( listCURRENT_LIST_LENGTH( &( pxReadyTasksLists[ tskIDLE_PRIORITY ] ) ) > ( UBaseType_t ) 1 )
+			if( listCURRENT_LIST_LENGTH( plist ) > ( UBaseType_t ) 1 )
 			{
 				taskYIELD();
 			}
